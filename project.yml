@@ -15,6 +15,11 @@ targets:
     platform: iOS
     sources:
       - MemosApp
+    dependencies:
+      # Built by gomobile from the upstream Memos server (see .github/workflows/build-ipa.yml)
+      - framework: Frameworks/Memosmobile.xcframework
+        embed: false
+      - sdk: libresolv.tbd
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ganhoo.memos
@@ -43,9 +48,9 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         NSAppTransportSecurity:
-          NSAllowsArbitraryLoads: true
           NSAllowsLocalNetworking: true
-        NSLocalNetworkUsageDescription: 用于连接局域网内的 Memos 服务器
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
         NSCameraUsageDescription: 用于拍照并添加到笔记附件
         NSPhotoLibraryUsageDescription: 用于选择图片添加到笔记附件
         NSMicrophoneUsageDescription: 用于录制音频附件

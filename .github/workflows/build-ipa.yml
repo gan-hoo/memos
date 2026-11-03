@@ -5,9 +5,16 @@ on:
     branches: ["**"]
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      memos_version:
+        description: "Upstream usememos/memos tag to embed"
+        required: false
 
 permissions:
   contents: write
+
+env:
+  MEMOS_VERSION: ${{ github.event.inputs.memos_version || 'v0.31.0' }}
 
 jobs:
   build:
@@ -15,13 +22,48 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Fetch upstream Memos ${{ env.MEMOS_VERSION }}
+        run: git clone --depth 1 --branch "$MEMOS_VERSION" https://github.com/usememos/memos.git upstream
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: upstream/go.mod
+          cache-dependency-path: upstream/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Build Memos web frontend
+        working-directory: upstream/web
+        run: |
+          npm install -g pnpm@$(node -p "require('./package.json').packageManager.split('@')[1]")
+          pnpm install --frozen-lockfile
+          pnpm release
+
+      - name: Build Memos server framework (gomobile)
+        working-directory: upstream
+        run: |
+          cp -R ../mobile ./mobile
+          go get golang.org/x/mobile/bind@latest
+          go install golang.org/x/mobile/cmd/gomobile@latest golang.org/x/mobile/cmd/gobind@latest
+          gomobile init
+          VERSION="${MEMOS_VERSION#v}"
+          gomobile bind -v \
+            -target ios \
+            -iosversion 15.0 \
+            -ldflags "-s -w -X github.com/usememos/memos/internal/version.Version=${VERSION} -X github.com/usememos/memos/internal/version.Commit=$(git rev-parse --short HEAD)" \
+            -o ../Frameworks/Memosmobile.xcframework \
+            ./mobile/memosmobile
+          ls -la ../Frameworks/Memosmobile.xcframework
+
       - name: Install XcodeGen
         run: brew install xcodegen
 
       - name: Generate Xcode project
         run: xcodegen generate
 
-      - name: Build (unsigned)
+      - name: Build app (unsigned)
         run: |
           set -o pipefail
           xcodebuild \
@@ -34,7 +76,8 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            build | tee build.log | xcpretty || (tail -n 200 build.log; exit 1)
+            build > build.log 2>&1 || { grep -E "error:|warning: .*Memosmobile" build.log | head -50; tail -n 80 build.log; exit 1; }
+          grep -c "warning:" build.log || true
 
       - name: Package IPA
         run: |
@@ -50,8 +93,7 @@ jobs:
           name: Memos-unsigned-ipa
           path: Memos-unsigned.ipa
 
-      - name: Publish release (latest)
-        if: github.event_name != 'pull_request'
+      - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'latest' }}

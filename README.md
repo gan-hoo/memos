@@ -1,40 +1,60 @@
-# Memos for iOS
+# Memos for iOS（本地版）
 
-基于开源项目 [Memos](https://github.com/usememos/memos) 的 iOS 客户端（SwiftUI + WKWebView）。
-首次打开输入你自托管的 Memos 服务器地址，即可在 App 中使用完整的 Memos 功能，登录状态会被保存。
+把开源项目 [Memos](https://github.com/usememos/memos) **整个服务端直接打包进 iOS App**，在手机本地运行，**不需要任何服务器**。
+
+## 工作原理
+
+```
+┌──────────────── iOS App ────────────────┐
+│  SwiftUI + WKWebView  ── http://127.0.0.1 ──▶  Memos 服务端 (Go, gomobile 编译)
+│        ▲                                   │      └─ SQLite: Documents/memos_prod.db
+│        └── 自动创建本地账户并自动登录        │
+└─────────────────────────────────────────┘
+```
+
+- 上游 Memos 的 Go 服务端 + Web 前端通过 `gomobile` 编译成 `Memosmobile.xcframework`，App 启动时在 `127.0.0.1` 上运行（只监听本机，不对外暴露）。
+- 首次启动自动创建本地账户（用户名 `me`，随机密码）并自动登录，打开即用。
+- 数据全部保存在手机上：`文件` App → 我的 iPhone → Memos → `memos_prod.db`，可直接拷贝备份。
+- App 从后台恢复时如果 iOS 回收了本地服务，会自动重启并刷新。
 
 ## 功能
 
-- 首次启动配置服务器地址（支持 `https://` 与局域网 `http://`）
-- 登录 Cookie 持久化，免重复登录
-- 下拉刷新、左右滑动前进/后退
-- 外部链接自动用 Safari 打开
-- 支持图片/文件上传（相机、相册）
-- 左下角菜单：首页 / 刷新 / 在 Safari 打开 / 更换服务器
+- 完整的 Memos 功能（与上游 Web 版一致）
+- 下拉刷新、左右滑动前进/后退，外部链接用 Safari 打开
+- 图片/文件附件（相机、相册）
+- 左下角菜单：首页 / 刷新 / 重新自动登录 / 查看本地账户 / 关于与数据
 
 ## 获取 IPA
 
 每次推送都会由 GitHub Actions（macOS runner）自动构建 **未签名** 的 `Memos-unsigned.ipa`：
 
-- 仓库的 **Releases → Latest build** 下载；或
+- 仓库 **Releases → Latest build** 下载；或
 - **Actions → Build IPA →** 对应运行的 Artifacts 下载。
 
-未签名 IPA 需要自行签名安装，例如使用 AltStore / SideStore / Sideloadly（Apple ID 免费签名）或 TrollStore。
+未签名 IPA 需自行签名安装，例如 AltStore / SideStore / Sideloadly（免费 Apple ID 即可）或 TrollStore。
 
-## 本地构建
+想换嵌入的 Memos 版本：Actions → Build IPA → Run workflow，填写 `memos_version`（如 `v0.31.0`）。
 
-```bash
-brew install xcodegen
-xcodegen generate
-open Memos.xcodeproj   # 在 Xcode 中选择你的 Team 后运行到真机
-```
-
-## 部署 Memos 服务器
+## 本地构建（macOS）
 
 ```bash
-docker run -d --name memos -p 5230:5230 -v ~/.memos:/var/opt/memos neosmemo/memos:stable
+git clone --depth 1 --branch v0.31.0 https://github.com/usememos/memos upstream
+(cd upstream/web && pnpm install && pnpm release)          # 需要 Node 24+
+cp -R mobile upstream/ && cd upstream
+go get golang.org/x/mobile/bind@latest
+go install golang.org/x/mobile/cmd/gomobile@latest golang.org/x/mobile/cmd/gobind@latest
+gomobile init
+gomobile bind -target ios -iosversion 15.0 -o ../Frameworks/Memosmobile.xcframework ./mobile/memosmobile
+cd .. && brew install xcodegen && xcodegen generate && open Memos.xcodeproj
 ```
+
+## 目录
+
+- `MemosApp/` — iOS App（SwiftUI）
+- `mobile/memosmobile/` — Go 桥接层，构建时复制进上游 Memos 源码树后用 gomobile 编译
+- `project.yml` — XcodeGen 工程描述
+- `.github/workflows/build-ipa.yml` — 构建流程
 
 ## License
 
-本客户端代码以 MIT 协议发布。Memos 本身遵循其仓库中的 MIT 协议。
+MIT。Memos 本身遵循其仓库中的 MIT 协议。

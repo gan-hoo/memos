@@ -20,14 +20,15 @@ final class BrowserModel: ObservableObject {
 }
 
 struct BrowserView: View {
-    let serverURL: URL
-    @EnvironmentObject var settings: AppSettings
+    let session: WebSession
+    @EnvironmentObject var server: LocalServer
     @StateObject private var model = BrowserModel()
-    @State private var confirmChange = false
+    @State private var showAccount = false
+    @State private var showAbout = false
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            WebView(url: serverURL, model: model)
+            WebView(session: session, model: model)
                 .edgesIgnoringSafeArea(.bottom)
 
             if model.isLoading {
@@ -43,13 +44,10 @@ struct BrowserView: View {
             Menu {
                 Button { model.goHome() } label: { Label("首页", systemImage: "house") }
                 Button { model.reload() } label: { Label("刷新", systemImage: "arrow.clockwise") }
-                Button { if let u = model.webView?.url { UIApplication.shared.open(u) } } label: {
-                    Label("在 Safari 中打开", systemImage: "safari")
-                }
                 Divider()
-                Button(role: .destructive) { confirmChange = true } label: {
-                    Label("更换服务器", systemImage: "server.rack")
-                }
+                Button { server.signInAgain() } label: { Label("重新自动登录", systemImage: "person.crop.circle.badge.checkmark") }
+                Button { showAccount = true } label: { Label("本地账户", systemImage: "key") }
+                Button { showAbout = true } label: { Label("关于与数据", systemImage: "info.circle") }
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 16, weight: .semibold))
@@ -60,25 +58,31 @@ struct BrowserView: View {
             .padding(.leading, 12)
             .padding(.bottom, 28)
         }
-        .onAppear { model.homeURL = serverURL }
-        .alert("更换服务器？", isPresented: $confirmChange) {
-            Button("取消", role: .cancel) {}
-            Button("更换") { settings.serverURL = nil }
+        .onAppear { model.homeURL = session.baseURL }
+        .onChange(of: server.restartCount) { _ in model.reload() }
+        .alert("本地账户", isPresented: $showAccount) {
+            Button("复制密码") { UIPasteboard.general.string = LocalAccount.loadOrCreate().password }
+            Button("好", role: .cancel) {}
         } message: {
-            Text("当前：\(serverURL.absoluteString)")
+            let account = LocalAccount.loadOrCreate()
+            Text("用户名：\(account.username)\n密码：\(account.password)\n\nApp 会自动登录。如果你在网页里退出了登录，点“重新自动登录”即可。")
+        }
+        .alert("Memos \(server.version)", isPresented: $showAbout) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text("所有笔记都保存在本机，无需服务器。\n\n数据库文件 memos_prod.db 位于“文件” App → 我的 iPhone → Memos，可直接拷贝备份。")
         }
     }
 
     private func errorView(_ message: String) -> some View {
         VStack(spacing: 16) {
-            Image(systemName: "wifi.exclamationmark").font(.system(size: 44)).foregroundColor(.secondary)
-            Text("无法连接到服务器").font(.headline)
+            Image(systemName: "exclamationmark.triangle").font(.system(size: 44)).foregroundColor(.secondary)
+            Text("页面加载失败").font(.headline)
             Text(message).font(.footnote).foregroundColor(.secondary).multilineTextAlignment(.center)
-            Text(serverURL.absoluteString).font(.footnote.monospaced()).foregroundColor(.secondary)
-            HStack(spacing: 12) {
-                Button("重试") { model.reload() }.buttonStyle(.borderedProminent)
-                Button("更换服务器") { settings.serverURL = nil }.buttonStyle(.bordered)
-            }
+            Button("重试") {
+                server.ensureAlive()
+                model.reload()
+            }.buttonStyle(.borderedProminent)
         }
         .padding(32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -87,16 +91,20 @@ struct BrowserView: View {
 }
 
 struct WebView: UIViewRepresentable {
-    let url: URL
+    let session: WebSession
     @ObservedObject var model: BrowserModel
 
-    func makeCoordinator() -> Coordinator { Coordinator(url: url, model: model) }
+    func makeCoordinator() -> Coordinator { Coordinator(url: session.baseURL, model: model) }
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()
         config.allowsInlineMediaPlayback = true
         config.defaultWebpagePreferences.allowsContentJavaScript = true
+        if let script = session.bootstrapScript {
+            config.userContentController.addUserScript(
+                WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
 
         let wv = WKWebView(frame: .zero, configuration: config)
         wv.navigationDelegate = context.coordinator
@@ -111,7 +119,7 @@ struct WebView: UIViewRepresentable {
         wv.scrollView.refreshControl = refresh
 
         model.webView = wv
-        wv.load(URLRequest(url: url))
+        wv.load(URLRequest(url: session.baseURL))
         return wv
     }
 
