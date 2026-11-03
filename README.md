@@ -55,6 +55,10 @@ cd .. && brew install xcodegen && xcodegen generate && open Memos.xcodeproj
 - `project.yml` — XcodeGen 工程描述
 - `.github/workflows/build-ipa.yml` — 构建流程
 
+## 另：Meow for iOS
+
+`meow/` 目录把 [XuYouo/Meow](https://github.com/XuYouo/Meow) 笔记应用打包为离线 iOS App，IPA 发布在 Releases → `meow-latest`。详见 [meow/README.md](meow/README.md)。
+
 ## License
 
 MIT。Memos 本身遵循其仓库中的 MIT 协议。

@@ -4,6 +4,9 @@ on:
   push:
     branches: ["**"]
     tags: ["v*"]
+    paths-ignore:
+      - "meow/**"
+      - ".github/workflows/build-meow-ipa.yml"
   workflow_dispatch:
     inputs:
       memos_version:

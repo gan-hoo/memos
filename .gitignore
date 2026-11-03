@@ -6,3 +6,5 @@ build.log
 .DS_Store
 xcuserdata/
 Frameworks/
+meow/web/
+meow/upstream/

@@ -1,0 +1,114 @@
+name: Build Meow IPA
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "meow/**"
+      - ".github/workflows/build-meow-ipa.yml"
+  workflow_dispatch:
+    inputs:
+      meow_ref:
+        description: "XuYouo/Meow branch, tag or commit to embed"
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-meow-ipa-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  MEOW_REPO: https://github.com/XuYouo/Meow.git
+  MEOW_REF: ${{ github.event.inputs.meow_ref || 'main' }}
+
+jobs:
+  build:
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: meow
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch upstream Meow (${{ env.MEOW_REF }})
+        run: |
+          git init upstream && cd upstream
+          git remote add origin "$MEOW_REPO"
+          git fetch --depth 1 origin "$MEOW_REF"
+          git checkout --detach FETCH_HEAD
+          echo "MEOW_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+          echo "MEOW_VERSION=$(node -p "require('./package.json').version")" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: meow/upstream/.nvmrc
+
+      - name: Build Meow web frontend
+        working-directory: meow/upstream
+        env:
+          NODE_ENV: production
+          # Electron/native SQLite deps are not needed for the web build.
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+        run: |
+          npm install --no-audit --no-fund --ignore-scripts --include=dev
+          npx vite build
+          test -f build/index.html
+          # Desktop-only files are not needed in the iOS bundle.
+          rm -f build/electron.js build/preload.js
+          rm -rf ../web && cp -R build ../web
+          du -sh ../web
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build app (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project Meow.xcodeproj \
+            -scheme Meow \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            MARKETING_VERSION="$MEOW_VERSION" \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build > build.log 2>&1 || { grep -E "error:" build.log | head -50; tail -n 80 build.log; exit 1; }
+          grep -c "warning:" build.log || true
+
+      - name: Package IPA
+        run: |
+          APP=build/Build/Products/Release-iphoneos/Meow.app
+          test -f "$APP/web/index.html"
+          rm -rf Payload && mkdir Payload
+          cp -R "$APP" Payload/
+          IPA="Meow-${MEOW_VERSION}-${MEOW_SHA}-${GITHUB_SHA::7}-unsigned.ipa"
+          zip -qry "$IPA" Payload
+          ls -lh "$IPA"
+          echo "IPA=$IPA" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.IPA }}
+          path: meow/${{ env.IPA }}
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="meow-latest"
+          # Recreate so the tag, notes and asset always match this build.
+          gh release delete "$TAG" --cleanup-tag --yes || true
+          git push origin ":refs/tags/$TAG" 2>/dev/null || true
+          gh release create "$TAG" "$IPA" --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "Meow iOS (Meow@${MEOW_SHA}, ${GITHUB_SHA::7})" \
+            --notes "内嵌 XuYouo/Meow ${MEOW_REF}@${MEOW_SHA}，离线运行，笔记保存在本机。构建于 $(date -u '+%Y-%m-%d %H:%M UTC')，提交 ${GITHUB_SHA}。未签名 IPA，请用 AltStore / SideStore / Sideloadly / TrollStore 安装。"
