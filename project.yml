@@ -1,0 +1,51 @@
+name: Memos
+options:
+  bundleIdPrefix: com.ganhoo
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+targets:
+  Memos:
+    type: application
+    platform: iOS
+    sources:
+      - MemosApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ganhoo.memos
+        PRODUCT_NAME: Memos
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Automatic
+    info:
+      path: MemosApp/Info.plist
+      properties:
+        CFBundleDisplayName: Memos
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSRequiresIPhoneOS: true
+        UILaunchScreen: {}
+        UIApplicationSupportsIndirectInputEvents: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+          NSAllowsLocalNetworking: true
+        NSLocalNetworkUsageDescription: 用于连接局域网内的 Memos 服务器
+        NSCameraUsageDescription: 用于拍照并添加到笔记附件
+        NSPhotoLibraryUsageDescription: 用于选择图片添加到笔记附件
+        NSMicrophoneUsageDescription: 用于录制音频附件
