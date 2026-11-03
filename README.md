@@ -28,7 +28,7 @@
 
 每次推送都会由 GitHub Actions（macOS runner）自动构建 **未签名** 的 `Memos-unsigned.ipa`：
 
-- 仓库 **Releases → Latest build** 下载；或
+- 仓库 **Releases → latest** 下载（每次构建都会重建，文件名带版本号和提交号）；或
 - **Actions → Build IPA →** 对应运行的 Artifacts 下载。
 
 未签名 IPA 需自行签名安装，例如 AltStore / SideStore / Sideloadly（免费 Apple ID 即可）或 TrollStore。

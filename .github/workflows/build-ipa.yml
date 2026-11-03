@@ -13,6 +13,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: build-ipa-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   MEMOS_VERSION: ${{ github.event.inputs.memos_version || 'v0.31.0' }}
 
@@ -85,19 +89,29 @@ jobs:
           test -d "$APP"
           rm -rf Payload && mkdir Payload
           cp -R "$APP" Payload/
-          zip -qry Memos-unsigned.ipa Payload
-          ls -lh Memos-unsigned.ipa
+          IPA="Memos-${MEMOS_VERSION#v}-local-${GITHUB_SHA::7}-unsigned.ipa"
+          zip -qry "$IPA" Payload
+          ls -lh "$IPA"
+          echo "IPA=$IPA" >> "$GITHUB_ENV"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Memos-unsigned-ipa
-          path: Memos-unsigned.ipa
+          name: ${{ env.IPA }}
+          path: ${{ env.IPA }}
 
       - name: Publish release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'latest' }}
-          name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'Latest build' }}
-          prerelease: ${{ !startsWith(github.ref, 'refs/tags/') }}
-          target_commitish: ${{ github.sha }}
-          files: Memos-unsigned.ipa
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            TAG="$GITHUB_REF_NAME"; FLAGS=""
+          else
+            TAG="latest"; FLAGS="--prerelease"
+            # Recreate so the tag, notes and asset always match this build.
+            gh release delete "$TAG" --cleanup-tag --yes || true
+            git push origin ":refs/tags/$TAG" 2>/dev/null || true
+          fi
+          gh release create "$TAG" "$IPA" $FLAGS \
+            --target "$GITHUB_SHA" \
+            --title "Memos ${MEMOS_VERSION} 本地版 (${GITHUB_SHA::7})" \
+            --notes "内嵌 Memos ${MEMOS_VERSION}，完全本地运行，无需服务器。构建于 $(date -u '+%Y-%m-%d %H:%M UTC')，提交 ${GITHUB_SHA}。未签名 IPA，请用 AltStore / SideStore / Sideloadly / TrollStore 安装。"
