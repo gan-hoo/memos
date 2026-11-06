@@ -1,4 +1,4 @@
-import Foundation
+import SwiftUI
 
 enum AttachmentKind: String, Codable {
     case photo, audio, location
@@ -27,6 +27,13 @@ struct Entry: Codable, Identifiable, Hashable {
     var prompt: String?
     var isBookmarked = false
     var attachments: [Attachment] = []
+    /// 所属日记本
+    var journalID: UUID?
+    /// 心情（Mood.rawValue）
+    var mood: String?
+    /// 带格式的正文（RTF）；`body` 始终保存纯文本用于搜索和统计
+    var richText: Data?
+    var titleHidden: Bool?
 
     var photos: [Attachment] { attachments.filter { $0.kind == .photo } }
     var audios: [Attachment] { attachments.filter { $0.kind == .audio } }
@@ -55,6 +62,68 @@ struct Entry: Codable, Identifiable, Hashable {
             || body.localizedCaseInsensitiveContains(query)
             || (prompt?.localizedCaseInsensitiveContains(query) ?? false)
             || (location?.placeName?.localizedCaseInsensitiveContains(query) ?? false)
+    }
+}
+
+struct Journal: Codable, Identifiable, Hashable {
+    var id = UUID()
+    var name: String
+    var icon: String
+    var colorIndex: Int
+
+    static let icons = [
+        "book.closed.fill", "heart.fill", "moon.fill", "house.fill", "star.fill", "leaf.fill",
+        "sun.max.fill", "airplane", "briefcase.fill", "pawprint.fill", "cup.and.saucer.fill", "music.note",
+        "camera.fill", "figure.walk", "graduationcap.fill", "gift.fill", "tray.full.fill", "sparkles",
+    ]
+}
+
+enum Palette {
+    static let colors: [Color] = [
+        Color(red: 0.42, green: 0.36, blue: 0.95), Color(red: 0.96, green: 0.42, blue: 0.29),
+        Color(red: 0.98, green: 0.78, blue: 0.20), Color(red: 0.30, green: 0.75, blue: 0.45),
+        Color(red: 0.20, green: 0.60, blue: 0.95), Color(red: 0.93, green: 0.35, blue: 0.55),
+        Color(red: 0.78, green: 0.52, blue: 0.40), Color(red: 0.15, green: 0.15, blue: 0.17),
+    ]
+    static func color(_ i: Int) -> Color { colors[((i % colors.count) + colors.count) % colors.count] }
+}
+
+enum Mood: String, CaseIterable, Identifiable {
+    case great, good, calm, neutral, bad, awful
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .great: return "非常愉快"
+        case .good: return "愉快"
+        case .calm: return "平静"
+        case .neutral: return "一般"
+        case .bad: return "不愉快"
+        case .awful: return "非常不愉快"
+        }
+    }
+
+    var emoji: String {
+        switch self {
+        case .great: return "🤩"
+        case .good: return "😊"
+        case .calm: return "😌"
+        case .neutral: return "😐"
+        case .bad: return "😔"
+        case .awful: return "😣"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .great: return .orange
+        case .good: return .yellow
+        case .calm: return .mint
+        case .neutral: return .gray
+        case .bad: return .indigo
+        case .awful: return .purple
+        }
     }
 }
 
@@ -114,6 +183,7 @@ enum Fmt {
     }
 
     private static let dayF = make("MMMdEEEE")
+    private static let shortF = make("MMMdEEE")
     private static let fullF = make("yMMMdEEEE")
     private static let monthF = make("yMMMM")
     private static let weekdayF = make("EEEE")
@@ -123,6 +193,7 @@ enum Fmt {
         calendar.isDate(d, equalTo: Date(), toGranularity: .year) ? dayF.string(from: d) : fullF.string(from: d)
     }
     static func full(_ d: Date) -> String { fullF.string(from: d) }
+    static func short(_ d: Date) -> String { shortF.string(from: d) }
     static func month(_ d: Date) -> String { monthF.string(from: d) }
     static func weekday(_ d: Date) -> String { weekdayF.string(from: d) }
     static func time(_ d: Date) -> String { timeF.string(from: d) }

@@ -2,17 +2,15 @@ import SwiftUI
 
 /// 回顾：连续记录、年度统计、日历
 struct InsightsView: View {
+    var open: (Entry) -> Void
     @EnvironmentObject private var store: JournalStore
-    @Environment(\.dismiss) private var dismiss
 
     @State private var month = Fmt.calendar.dateInterval(of: .month, for: Date())!.start
     @State private var selectedDay: Date?
-    @State private var composing: ComposeTarget?
 
     private var cal: Calendar { Fmt.calendar }
 
     var body: some View {
-        NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
                     streakCard
@@ -32,13 +30,8 @@ struct InsightsView: View {
                 .padding()
             }
             .background(Color(.systemGroupedBackground))
-            .navigationTitle("回顾")
+            .navigationTitle("分析")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } }
-            }
-            .sheet(item: $composing) { t in ComposerView(entry: t.entry, isNew: t.isNew) }
-        }
     }
 
     // MARK: - 卡片
@@ -127,7 +120,7 @@ struct InsightsView: View {
             Text(Fmt.full(day)).font(.headline)
             ForEach(list) { e in
                 Button {
-                    composing = ComposeTarget(entry: e, isNew: false)
+                    open(e)
                 } label: {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(e.title.isEmpty ? (e.prompt ?? "无标题") : e.title)

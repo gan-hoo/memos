@@ -5,16 +5,19 @@ import UIKit
 @MainActor
 final class JournalStore: ObservableObject {
     @Published private(set) var entries: [Entry] = []
+    @Published private(set) var journals: [Journal] = []
     @Published var lastError: String?
 
     let mediaDir: URL
     private let indexURL: URL
+    private let journalsURL: URL
     private let fm = FileManager.default
 
     init() {
         let docs = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
         mediaDir = docs.appendingPathComponent("Media", isDirectory: true)
         indexURL = docs.appendingPathComponent("journal.json")
+        journalsURL = docs.appendingPathComponent("journals.json")
         try? fm.createDirectory(at: mediaDir, withIntermediateDirectories: true)
         load()
     }
@@ -24,11 +27,66 @@ final class JournalStore: ObservableObject {
     // MARK: - 读写
 
     private func load() {
-        guard let data = try? Data(contentsOf: indexURL) else { return }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        entries = ((try? decoder.decode([Entry].self, from: data)) ?? []).sorted { $0.date > $1.date }
+        if let data = try? Data(contentsOf: indexURL) {
+            entries = ((try? decoder.decode([Entry].self, from: data)) ?? []).sorted { $0.date > $1.date }
+        }
+        if let data = try? Data(contentsOf: journalsURL) {
+            journals = (try? decoder.decode([Journal].self, from: data)) ?? []
+        }
+        if journals.isEmpty {
+            journals = [Journal(name: "日记", icon: "book.closed.fill", colorIndex: 0)]
+            persistJournals()
+        }
+        // 旧数据或日记本被删除：归到第一个日记本
+        let ids = Set(journals.map(\.id))
+        var changed = false
+        for i in entries.indices where entries[i].journalID.map({ !ids.contains($0) }) ?? true {
+            entries[i].journalID = journals[0].id
+            changed = true
+        }
+        if changed { persist() }
     }
+
+    private func persistJournals() {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted]
+        try? encoder.encode(journals).write(to: journalsURL, options: [.atomic, .completeFileProtection])
+    }
+
+    // MARK: - 日记本
+
+    var defaultJournalID: UUID { journals[0].id }
+
+    func journal(_ id: UUID?) -> Journal? { journals.first { $0.id == id } }
+
+    func entries(in journalID: UUID?) -> [Entry] {
+        guard let journalID else { return entries }
+        return entries.filter { $0.journalID == journalID }
+    }
+
+    func saveJournal(_ j: Journal) {
+        if let i = journals.firstIndex(where: { $0.id == j.id }) { journals[i] = j } else { journals.append(j) }
+        persistJournals()
+    }
+
+    func moveJournals(from: IndexSet, to: Int) {
+        journals.move(fromOffsets: from, toOffset: to)
+        persistJournals()
+    }
+
+    /// 删除日记本及其中所有日记
+    func deleteJournal(_ j: Journal) {
+        guard journals.count > 1 else { return }
+        for e in entries where e.journalID == j.id { removeFiles(e.attachments.compactMap(\.fileName)) }
+        entries.removeAll { $0.journalID == j.id }
+        journals.removeAll { $0.id == j.id }
+        persist()
+        persistJournals()
+    }
+
+    func entry(_ id: UUID) -> Entry? { entries.first { $0.id == id } }
 
     private func persist() {
         let encoder = JSONEncoder()
@@ -54,7 +112,8 @@ final class JournalStore: ObservableObject {
     }
 
     func delete(_ entry: Entry) {
-        removeFiles(entry.attachments.compactMap(\.fileName))
+        guard let stored = self.entry(entry.id) else { return }
+        removeFiles(stored.attachments.compactMap(\.fileName))
         entries.removeAll { $0.id == entry.id }
         persist()
     }
@@ -129,6 +188,12 @@ final class JournalStore: ObservableObject {
         }
         return best
     }
+
+    var wordsThisMonth: Int {
+        entries.filter { cal.isDate($0.date, equalTo: Date(), toGranularity: .month) }.reduce(0) { $0 + $1.wordCount }
+    }
+
+    var placeEntries: [Entry] { entries.filter { $0.location?.latitude != nil } }
 
     var thisYear: [Entry] { entries.filter { cal.isDate($0.date, equalTo: Date(), toGranularity: .year) } }
 

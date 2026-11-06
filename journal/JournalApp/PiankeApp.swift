@@ -9,7 +9,7 @@ struct PiankeApp: App {
     var body: some Scene {
         WindowGroup {
             ZStack {
-                HomeView()
+                RootView()
                 if lock.isLocked {
                     LockView()
                         .transition(.opacity)

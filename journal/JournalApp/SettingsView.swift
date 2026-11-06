@@ -128,14 +128,6 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section {
-                    Toggle(isOn: Binding(get: { lockEnabled }, set: { setLock($0) })) {
-                        Label("锁定日记", systemImage: "lock")
-                    }
-                } footer: {
-                    Text("开启后，每次打开 App 都需要用\(AppLock.biometryName)解锁，切到后台时自动锁定。")
-                }
-
-                Section {
                     Toggle(isOn: Binding(get: { reminderEnabled }, set: { setReminder($0) })) {
                         Label("每日提醒", systemImage: "bell")
                     }
@@ -149,20 +141,9 @@ struct SettingsView: View {
                     Text("每天在设定的时间提醒你写日记，并附上一个写作提示。")
                 }
 
-                Section {
-                    Button {
-                        if let url = store.exportMarkdown() { share = SharePayload(items: [url]) }
-                    } label: {
-                        Label("导出全部日记（Markdown）", systemImage: "square.and.arrow.up")
-                    }
-                    .disabled(store.entries.isEmpty)
-                    LabeledContent("日记数量", value: "\(store.entries.count)")
-                } footer: {
-                    Text("所有内容只保存在本机。可在「文件」App → 我的 iPhone → 片刻 中找到数据文件进行备份。")
-                }
             }
             .environment(\.locale, Fmt.locale)
-            .navigationTitle("设置")
+            .navigationTitle("通知")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } }
