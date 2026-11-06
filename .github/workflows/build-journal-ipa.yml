@@ -1,0 +1,79 @@
+name: Build Journal IPA
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "journal/**"
+      - ".github/workflows/build-journal-ipa.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-journal-ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: journal
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build app (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project Pianke.xcodeproj \
+            -scheme Pianke \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build > build.log 2>&1 || { grep -E "error:" build.log | head -50; tail -n 80 build.log; exit 1; }
+          grep -E "warning:" build.log | grep "/JournalApp/" | sort -u | head -40 || true
+
+      - name: Package IPA
+        run: |
+          APP=build/Build/Products/Release-iphoneos/Pianke.app
+          test -d "$APP"
+          rm -rf Payload && mkdir Payload
+          cp -R "$APP" Payload/
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$APP/Info.plist")
+          IPA="Pianke-${VERSION}-${GITHUB_SHA::7}-unsigned.ipa"
+          zip -qry "$IPA" Payload
+          ls -lh "$IPA"
+          echo "IPA=$IPA" >> "$GITHUB_ENV"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.IPA }}
+          path: journal/${{ env.IPA }}
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="journal-latest"
+          # Recreate so the tag, notes and asset always match this build.
+          gh release delete "$TAG" --cleanup-tag --yes || true
+          git push origin ":refs/tags/$TAG" 2>/dev/null || true
+          gh release create "$TAG" "$IPA" --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "片刻 日记 ${VERSION} (${GITHUB_SHA::7})" \
+            --notes "日记 App，数据只保存在本机。构建于 $(date -u '+%Y-%m-%d %H:%M UTC')，提交 ${GITHUB_SHA}。未签名 IPA，请用 AltStore / SideStore / Sideloadly / TrollStore 安装。"

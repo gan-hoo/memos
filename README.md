@@ -59,6 +59,10 @@ cd .. && brew install xcodegen && xcodegen generate && open Memos.xcodeproj
 
 `meow/` 目录把 [XuYouo/Meow](https://github.com/XuYouo/Meow) 笔记应用打包为离线 iOS App，IPA 发布在 Releases → `meow-latest`。详见 [meow/README.md](meow/README.md)。
 
+## 另：片刻 · 日记
+
+`journal/` 目录是一个原生 SwiftUI 日记 App（照片、录音、地点、写作提示、连续记录、面容 ID 锁定），IPA 发布在 Releases → `journal-latest`。详见 [journal/README.md](journal/README.md)。
+
 ## License
 
 MIT。Memos 本身遵循其仓库中的 MIT 协议。
